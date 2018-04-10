@@ -1,0 +1,155 @@
+---
+title: "DATA624 Homework 3"
+author: "Bin Lin"
+date: "2018-3-25"
+output: html_document
+---
+
+3.1. The UC Irvine Machine Learning Repository6 contains a data set related to glass identification. The data consist of 214 glass samples labeled as one of seven class categories. There are nine predictors, including the refractive index and percentages of eight elements: Na, Mg, Al, Si, K, Ca, Ba, and Fe.
+The data can be accessed via:
+
+
+```{r}
+#install.packages("mlbench")
+#install.packages("kableExtra")
+library(mlbench)
+library(kableExtra)
+library(knitr)
+
+data(Glass)
+str(Glass)
+```
+
+
+A and B
+(a) Using visualizations, explore the predictor variables to understand their distributions as well as the relationships between predictors.
+
+(b) Do there appear to be any outliers in the data? Are any predictors skewed?
+
+
+Approaches: In order to understand the distribution of the predictor variable, the most straight forward method is to use the histogram obtain the frequencies of each predictor variables. The boxplot and summary statistics  are useful in terms of searching for outliers and quantiles.And the correlation table tells us the relationship between each variables.
+
+
+Interpretation: 
+From the histogram, it shows the Fe and Ba variable contains lots of zeros, which make their graphs highly skewed to the right (K too). Most of the variables including RI, NA, AI, SI, CA have peaks in the center of the distribution. They appear to be more normally distributed. One exception is Mg, which has a trough in the center, but peaks on both ends. The summary statistics and boxplot have the same pattern as what is shown on the histogram, in addition to that, is also tell us there is lots of outliers in variable Ri, Al, Ca, Ba, Fe. The correlation table tell us that most of the variables are not related to each other, except the pair between RI and Ca, the correlation coefficient appear to be 0.7, which is moderately strong.  
+
+
+```{r}
+glass <- subset(Glass, select = -Type)
+predictors <- colnames(glass)
+
+par(mfrow = c(3, 3))
+for(i in 1:9)
+  {
+  hist(glass[,i], main = predictors[i])
+}
+
+par(mfcol=c(3, 3))
+for (i in 1:9)
+  {boxplot(glass[,i], main = predictors[i])}
+kable(summary(glass))
+
+cor.table <- cor(glass, use = "pairwise", method = "spearman")
+kable(round(cor.table, 2))
+```
+
+
+(c) Are there any relevant transformations of one or more predictors that might improve the classification model?
+
+Box-Cox transformation can be used to normalize the data, which are highly skewed. While Spatial Sign Transformation can be used to lower the effects of outliers, if the model is considered to be sensitive to outliers. 
+
+
+
+
+3.2. The soybean data can also be found at the UC Irvine Machine Learning Repository. Data were collected to predict disease in 683 soybeans. The 35 predictors are mostly categorical and include information on the environmental conditions (e.g., temperature, precipitation) and plant conditions (e.g., left spots, mold growth). The outcome labels consist of 19 distinct classes.
+
+
+The data can be loaded via:
+```{r}
+library(mlbench)
+library(ggplot2)
+library(lattice)
+data(Soybean)
+str(Soybean)
+head(Soybean, 30)
+```
+
+
+(a) Investigate the frequency distributions for the categorical predictors. Are any of the distributions degenerate in the ways discussed earlier in this chapter?
+
+Approaches: Predictors with degenerate distributions are those predictors whose variances tend to approach zero.
+. The fraction of unique values over the sample size is low (say 10%).
+. The ratio of the frequency of the most prevalent value to the frequency of the second most prevalent value is large (say around 20).
+
+The caret package function nearZeroVar will return the column numbers of any predictors that fulfill the conditions the conditions above.
+
+
+Interpretation: 
+The following code shows that three variables leaf.mild, mycelium and sclerotia are predictors with degenerate distribution.
+
+
+```{r}
+#install.packages('caret', repos='http://cran.rstudio.com/')
+#install.packages("dplyr")
+#install.packages("tidyr")
+library(tidyr)
+library(dplyr)
+library(caret)
+
+index <- nearZeroVar(Soybean)
+colnames(Soybean)[index]
+```
+
+
+(b) Roughly 18% of the data are missing. Are there particular predictors that are more likely to be missing? Is the pattern of missing data related to the classes?
+
+Approaches: 
+I am using the dplyr package to handle the data tidying and transformation. In this package there are many methods which I can use. for example: summarize_all, mutate, arrange et cetera.
+
+
+Interpretation: According to first list, we can tell that hail, sever, seed.tmt, and lodge are teh variables that miss lots of data, While Class and leaves do not have missing data at all. Based on second graph, we can tell that the patten of missing data is also related to the classes. phytophthora-rot has the most, followed by 2-4-d-injury	, nematode, diaporthe-pod-&-stem-blight, herbicide-injury. Everything else have complete sets of data.	
+
+
+
+```{r}
+missing_values <- Soybean %>%
+  select(everything()) %>% 
+  summarize_all(funs(sum(is.na(.))))
+
+data.frame(sort(missing_values, decreasing = TRUE))
+    
+
+missing_classes <- Soybean %>%
+  gather(key = predictors, value = value, -Class)%>%
+  group_by(Class)%>%
+  summarize(n = sum(is.na(value)))%>%
+  mutate(n, missing = n/(nrow(Soybean) * 35))%>%
+  arrange(desc(missing))
+
+missing_classes
+```
+
+(c) Develop a strategy for handling missing data, either by eliminating predictors or imputation.
+
+Approaches: We can use Mice package to impute the missing values. Mice means multivariate imputation by chained equations. To improve the running time, I only run one time of imputation and use the default function ppm. Ppm means predictive mean matching. " It is similar to the regression method except that for each missing value, it imputes a value randomly from a set of observed values whose predicted values are closest to the predicted value for the missing value from the simulated regression model" (Heitjan and Little 1991; Schenker and Taylor 1996).
+
+
+Interpretation:
+
+The Mice package is very useful in terms of imputating values. As the end result shows, there is no more missing value in the data frame. 
+
+
+```{r}
+library(mice)
+#install.packages("mice")
+
+Soybean_impute <- mice(Soybean, m=1, method = "pmm", print = F)
+Soybean_impute <- complete(Soybean_impute)
+
+result<- Soybean_impute %>%
+  select(everything()) %>% 
+  summarize_all(funs(sum(is.na(.))))
+
+data.frame(sort(result, decreasing = TRUE))
+```
+

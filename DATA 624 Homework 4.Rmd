@@ -1,0 +1,225 @@
+---
+title: "DATA 624 Homework 4"
+author: "Bin Lin"
+date: "2018-3-26"
+output: html_document
+---
+
+7.8 
+1. Data set books contains the daily sales of paperback and hardcover books at the same store. The task is to forecast the next four days' sales for paperback and hardcover books (data set books).
+
+a. Plot the series and discuss the main features of the data.
+
+Approaches: I was using the Time Series plot to get a general graph of the daily sales for both paperback and hardcover books. Then I will use classical decomposition to investigate the trend, seasonal, and random components. Since books contains daily data, I would set the time frequency into 7 to search for any weekly seasonality
+
+Interpretation: 
+From the general Time Series graph, there is clear upward trend associated with both daily sales of paperback and hardcover books. The sale varies a lot from day to day. No apparent seasonality observed in this graph. In addition, it looks like there is a inverse relationship between two variables as sale of one peak, the sale of the other bottoms. From the decomposition graph, we can tell sales of both trending upwards. There is some sort of seasonality exist, as the sale then to peak once a week. 
+
+
+```{r}
+library(fma)
+library(ggplot2)
+data("books")
+head(books)
+
+autoplot(books, main="The Daily Sales of Paperback and Hardcover Books", ylab="Daily Sales", xlab="Day")
+
+books_ts <- ts(books, frequency = 7)
+fit_decom1 <- decompose(books_ts[, 1])
+plot(fit_decom1)
+
+fit_decom2 <- decompose(books_ts[, 2])
+plot(fit_decom2)
+```
+
+
+b. Use simple exponential smoothing with the ses function (setting initial="simple") and explore different values of alpha for the paperback series. Record the within-sample SSE for the one-step forecasts. Plot SSE against alpha and find which value of alpha works best. What is the effect of alpha on the forecasts?
+
+Approaches:
+Simple exponential smoothing is method suitable for forecasting data with no trend or seasonal pattern. Forecasts are calculated using weighted averages where the weights decrease exponentially as observations come from further in the past. 
+
+
+Interpretation:
+
+From the graph, we are able to tell that alpha the SSE reaches its minimum when alpha is around 0.21.  Alpha is the smoothing parameter, it can only take values between 0 and 1. The larger the alpha value, more weight is given to the recent observation and vice versa.
+
+
+```{r}
+alpha <- numeric()
+sse <- numeric()
+
+for(i in seq(0, 1, 0.01)) {
+  
+  fit <- ses(books[, 1], alpha = i, initial="simple", h = 4)
+  alpha <- c(alpha, i)
+  sse <- c(sse, fit$model$SSE)
+}
+
+result <- data.frame(alpha, sse)
+plot(result, main="Paperback Simple Exponential Smoothing")
+
+```
+
+c. Now let ses select the optimal value of alpha. Use this value to generate forecasts for the next four days. Compare your results with 2.
+
+We can use summary statistics of simple exponential smoothing to find out the optimal value of alpha, which minimize SSE. Or on the other way, we can extract the value from the model, we will get the optimal alpha value is 0.2125115.
+
+```{r}
+fit1  <- ses(books[, 1], initial="simple", h = 4)
+summary(fit1)
+
+optimal_alpha1 <- fit1$model$par["alpha"]
+optimal_alpha1
+```
+
+d. Repeat but with initial="optimal". How much difference does an optimal initial level make?
+
+
+If we repeat the process with initial = "optimal", the optimal of alpha value is 0.1685384. The SSE values we obtain using three different methods are very closed to each other. 
+
+
+```{r}
+fit2  <- ses(books[, 1], initial="optimal", h = 4)
+summary(fit2)
+
+optimal_alpha2 <- fit2$model$par["alpha"]
+optimal_alpha2
+
+
+method <- c("Graph", "Simple", "Optimal")
+alphas <- c(0.21, optimal_alpha1, optimal_alpha2)
+SSES <- c(min(result$sse), fit1$model$SSE, sum(residuals(fit2) ^ 2))
+
+final <- data.frame(method,alphas, SSES)
+final
+```
+
+
+e. Repeat steps (b)-(d) with the hardcover series.
+
+After repeating the steps, we can tell three different methods end up with different values of alpha. However,  the SSE values are all very similar. 
+
+
+```{r}
+alpha <- numeric()
+sse <- numeric()
+
+for(i in seq(0, 1, 0.01)) {
+  
+  fit <- ses(books[, 2], alpha = i, initial="simple", h = 4)
+  alpha <- c(alpha, i)
+  sse <- c(sse, fit$model$SSE)
+}
+
+result <- data.frame(alpha, sse)
+plot(result, main="Paperback Simple Exponential Smoothing")
+
+
+fit1  <- ses(books[, 2], initial="simple", h = 4)
+summary(fit1)
+
+optimal_alpha1 <- fit1$model$par["alpha"]
+optimal_alpha1
+
+fit2  <- ses(books[, 2], initial="optimal", h = 4)
+summary(fit2)
+
+optimal_alpha2 <- fit2$model$par["alpha"]
+optimal_alpha2
+
+
+method <- c( "Simple", "Optimal")
+alphas <- c(optimal_alpha1, optimal_alpha2)
+SSES <- c(fit1$model$SSE, sum(residuals(fit2) ^ 2))
+
+final <- data.frame(method,alphas, SSES)
+final
+```
+
+
+
+3. For this exercise, use the quarterly UK passenger vehicle production data from 1977:1--2005:1 (data set ukcars).
+
+a. Plot the data and describe the main features of the series.
+
+From the decomposition figure, we can tell that there is upward trend regarding to the vehicle production. The upward trend stopped starting the year of 2000. In addition, the vehicle production has very strong seasonality correlation. 
+
+```{r}
+#install.packages("fpp")
+library(fpp)
+head(ukcars)
+autoplot(ukcars, main ="Quarterly UK Passenger Vehicle Production", ylab = "Vehicle Production", xlab = "Quarters")
+
+fit_decom <- decompose(ukcars)
+plot(fit_decom)
+```
+
+
+b. Decompose the series using STL and obtain the seasonally adjusted data.
+
+```{r}
+fit <- stl(ukcars, s.window = "periodic", robust = TRUE)
+plot(fit)
+
+plot(ukcars, col="grey", main ="Quarterly UK Passenger Vehicle Production", ylab = "Vehicle Production", xlab = "Quarters")
+lines(seasadj(fit), col="red", ylab="Seasonally adjusted")
+```
+
+
+c. Forecast the next two years of the series using an additive damped trend method applied to the seasonally adjusted data. Then reseasonalize the forecasts. Record the parameters of the method and report the RMSE of the one-step forecasts from your method.
+
+As showed in the following, I applied additive damped trend method to seasonally adjusted data. The RMSE is 25.20318. After the forecasts have been reseasonalized, the RMSE does not change. 
+
+
+```{r}
+fit2 <- holt(seasadj(fit), damped = TRUE, h = 8)
+plot(fit2)
+accuracy(fit2)
+
+fit3 <- forecast(fit2, method = "naive")
+plot(fit3)
+accuracy(fit3)
+```
+
+d. Forecast the next two years of the series using Holt's linear method applied to the seasonally adjusted data. Then reseasonalize the forecasts. Record the parameters of the method and report the RMSE of of the one-step forecasts from your method.
+
+
+As showed in the following, I applied Holt's linear method to seasonally adjusted data. The RMSE is 25.39072. After the forecasts have been reseasonalized, the RMSE does not change.
+
+```{r}
+fit4 <- holt(seasadj(fit), h = 8)
+plot(fit4)
+accuracy(fit4)
+
+fit5 <- forecast(fit4, method = "naive")
+plot(fit5)
+accuracy(fit5)
+```
+
+e. Now use ets() to choose a seasonal model for the data.
+
+Approaches: There exist two tyoes of models one with additive errors and one with multiplicative errors. Each model also consists of three components or states: error, trend, seasonal. Possibilities for each component are: Error ={A,M}, Trend ={N,A,Ad,M,Md}, and Seasonal ={N,A,M}. Therefore, there are total 30 state space models. Function ets can be used to estimate the models just by customerizing the arguments.   
+Interpretation:
+According to the statistical summary, the estimated model is ETS(A,N,A) with RMSE value to be 25.25792. Model ETS(A,N,A) means this model had additive errors, and additive seasonalityl, without trend. 
+
+```{r}
+fit6 <- ets(ukcars)
+summary(fit6)
+```
+
+
+f. Compare the RMSE of the fitted model with the RMSE of the model you obtained using an STL decomposition with Holt's method. Which gives the better in-sample fits?
+
+After we using additive damped trend method, Holt's linear method, and ets, we obtain three RMSE values. They are 25.20318, 25.39072, and 25.25792 respectively. All of them are not identical, but they are very closed to each other, which deem three models have similar accuracy to forecast the future vehicle productions.
+
+
+g. Compare the forecasts from the two approaches? Which seems most reasonable?
+
+```{r}
+plot(fit2)
+plot(fit4)
+plot(forecast(fit6,  h = 8))
+```
+
+I think ETS(A,N,A) is more reasonable, because it ocillate throughout the year which is a better presentation for the seasonality of the vehicle productions.
+
