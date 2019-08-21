@@ -1,0 +1,225 @@
+---
+title: "DATA 624 Homework 7"
+author: "Bin Lin"
+date: "2018-5-7"
+output: html_document
+---
+
+
+7.2. Friedman (1991) introduced several benchmark data sets create by simulation. One of these simulations used the following nonlinear equation to create data:
+
+$y=10sin(\pi { x }_{ 1 }{ x }_{ 2 })+20({ x }_{ 3 }-0.5)^{ 2 }+10{ x }_{ 4 }+5{ x }_{ 5 }+N(0,{ \sigma  }^{ 2 })$
+
+where the x values are random variables uniformly distributed between [0, 1] (there are also 5 other non-informative variables also created in the simulation). The package mlbench contains a function called mlbench.friedman1 that simulates these data:
+
+Which models appear to give the best performance? Does MARS select the informative predictors (those named X1-X5)?
+
+```{r}
+library(mlbench)
+library(caret)
+library(earth)
+library(pls)
+#install.packages("earth")
+
+set.seed(200)
+trainingData <- mlbench.friedman1(200, sd = 1)
+trainingData$x <- data.frame(trainingData$x)
+featurePlot(trainingData$x, trainingData$y)
+testData <- mlbench.friedman1(5000, sd = 1)
+testData$x <- data.frame(testData$x)
+```
+
+```{r}
+knnModel <- train(x = trainingData$x, y = trainingData$y, method = "knn", preProc = c("center", "scale"), tuneLength = 10)
+knnModel
+
+knnPred <- predict(knnModel, newdata = testData$x)
+postResample(pred = knnPred, obs = testData$y)
+```
+
+According to the following graph, the optimal k-Nearest Neighbors model contains 15 neighbors with RMSE value at 3.175.
+
+```{r}
+plot(knnModel)
+```
+
+
+The following code, the data was used to train for MARS model, after the preprocess procedures such as center, scale have already completed. 
+
+```{r}
+set.seed(888)
+marsGrid <- expand.grid(degree = 1:2, nprune = 1:20)
+marsTuned <- train(x = trainingData$x, y = trainingData$y, method = "earth", tuneGrid = marsGrid, trControl = trainControl(method = "cv"), preProc = c("center", "scale"))
+```
+
+Interpretation: MARS model is apparently better than KNN model since its RMSE value is 1.323, which is much less than the one generated from KNN model. The final values used for the model were nprune = 16 and degree = 2.In addition, MARS selects the informative predictors (X1-X5) only. X6-X10 predictors have no importance at all. 
+
+```{r}
+marsPred <- predict(marsTuned, newdata = testData$x)
+postResample(pred = marsPred, obs = testData$y)
+
+varImp(marsTuned)
+```
+
+```{r}
+plot(marsTuned)
+marsTuned
+```
+
+7.5. Exercise 6.3 describes data for a chemical manufacturing process. Use the same data imputation, data splitting, and pre-processing steps as before and train several nonlinear regression models.
+
+(a) Which nonlinear regression model gives the optimal resampling and test set performance?
+
+```{r}
+library(AppliedPredictiveModeling)
+library(mice)
+library(e1071)
+#install.packages("RANN")
+library(RANN)
+
+data(ChemicalManufacturingProcess)
+set.seed(888)
+
+a <- mice(ChemicalManufacturingProcess, m = 1, method = "pmm", print = F)
+C_M_P <- complete(a)
+
+trainingRows <- createDataPartition(C_M_P$Yield, p = .80, list= FALSE)
+
+yield_train <- C_M_P[trainingRows, 1]
+predictor_train <- C_M_P[trainingRows, -1]
+
+yield_test <- C_M_P[-trainingRows, 1]
+predictor_test <- C_M_P[-trainingRows, -1]
+
+CMP_trans <- preProcess(predictor_train, method = c("nzv", "BoxCox", "center", "scale", "knnImpute"))
+ctrl <- trainControl(method = "cv", number = 10)
+```
+
+
+Neural Networks
+```{r}
+set.seed(888)
+
+nnetGrid <- expand.grid(decay = c(0, 0.01, .1), size = c(1:10))
+
+nnetTune <- train(x = predictor_train, y = yield_train, method = "nnet", tuneGrid = nnetGrid, trControl = ctrl, linout = TRUE, trace = FALSE, maxit = 500)
+
+
+nnetPred <- predict(nnetTune, newdata = predictor_test)
+postResample(pred = nnetPred, obs = yield_test)
+plot(nnetTune)
+```
+
+K-Nearest Neighbors
+
+```{r}
+set.seed(888)
+knnTune <- train(x = predictor_train, y = yield_train, method = "knn", tuneLength = 10)
+
+knnPred <- predict(knnTune, newdata = predictor_test)
+postResample(pred = knnPred, obs = yield_test)
+plot(knnTune)
+```
+
+Multivariate Adaptive Regression Splines
+
+```{r}
+set.seed(888)
+
+marsGrid <- expand.grid(degree = 1:2, nprune = 1:20)
+marsTune <- train(x = predictor_train, y = yield_train, method = "earth", tuneGrid = marsGrid, trControl = ctrl)
+
+marsPred <- predict(marsTune, newdata = predictor_test)
+postResample(pred = marsPred, obs = yield_test)
+plot(marsTune)
+```
+
+Support Vector Machines
+```{r}
+set.seed(888)
+
+svmRTune <- train(predictor_train, yield_train, method = "svmRadial", tuneLength = 20, trControl = ctrl)
+
+#svmLTune <- train(predictor_train, yield_train, method = "svmLinear", tuneLength = 20, trControl = ctrl)
+
+#svmPTune <- train(predictor_train, yield_train, method = "svmPoly", tuneLength = 20, trControl = ctrl)
+```
+
+
+```{r}
+svmRPred <- predict(svmRTune, newdata = predictor_test)
+postResample(pred = svmRPred, obs = yield_test)
+
+#svmLPred <- predict(svmLTune, newdata = predictor_test)
+#postResample(pred = svmLPred, obs = yield_test)
+
+#svmPPred <- predict(svmPTune, newdata = predictor_test)
+#postResample(pred = svmPPred, obs = yield_test)
+
+
+plot(svmRTune)
+#plot(svmLTune)
+#plot(svmPTune)
+```
+
+Partial Least Squares
+
+```{r}
+set.seed(888)
+
+plsTune <- train(predictor_train, yield_train, method = "pls", tuneLength = 20, trControl = ctrl)
+
+plsPred <- predict(plsTune, newdata = predictor_test)
+postResample(pred = plsPred, obs = yield_test)
+plot(plsTune)
+```
+
+
+```{r}
+pls_RMSE <- min(plsTune$results$RMSE)
+nnet_RMSE <- min(nnetTune$results$RMSE)
+mars_RMSE <- min(marsTune$results$RMSE)
+svmR_RMSE <- min(svmRTune$results$RMSE)
+knn_RMSE <- min(knnTune$results$RMSE)
+
+
+result <- data.frame(Model = c("pls", "nnet", "mars", "svmR", "knn"), RMSE = c(pls_RMSE, nnet_RMSE, mars_RMSE, svmR_RMSE, knn_RMSE))
+
+result
+```
+
+Based on the result that I obtained for each model, the best model that generate optimal resampling and test set performance is the Support Vector Machines model using the method "svmRadial". Because this model has the lowest RMSE value which is 1.044. 
+
+
+
+(b) Which predictors are most important in the optimal nonlinear regression model? Do either the biological or process variables dominate the list? How do the top ten important predictors compare to the top ten predictors from the optimal linear model?
+
+
+```{r}
+varImp(svmRTune)
+```
+
+
+By comparing the importance figure between the optimal non-linear model and the optimal linea model, we are able know ManufacturingProcess32, 06. 09 all have significant weights on both model. PLS model is solely built upon manufacturing process predictors. However, SVM model gives more weight to Biological Material, when4 out of top 10 predictors are from this class. The mode suprising finding is that ManufacturingProcess13 is the most important predictor at SVM model, but it is not one of the top 10 predictors for PLS model.  
+
+```{r}
+par(mfrow = c(1, 2))
+plot(varImp(svmRTune), top = 10)
+plot(varImp(plsTune), top = 10)
+```
+
+
+(c) Explore the relationships between the top predictors and the response for the predictors that are unique to the optimal nonlinear regression model. Do these plots reveal intuition about the biological or process predictors and their relationship with yield?
+
+Out of the top 5 predictors, SVM model has large weight on ManufacturingProcess13 and BiologicalMaterial06, which are unique to this model. Therefore, I am going to investigate on the relationship between these two predictors with their respective yield in particular. The following graph proves that the yield has negative relationship with ManufacturingProcess13 and positive relationship with BiologicalMaterial06
+
+```{r}
+par(mfrow = c(1, 2))
+plot(C_M_P$Yield, C_M_P$ManufacturingProcess13)
+abline(lm(C_M_P$Yield ~ C_M_P$ManufacturingProcess13), col="red")
+
+plot(C_M_P$Yield, C_M_P$BiologicalMaterial06)
+abline(lm(C_M_P$Yield ~ C_M_P$BiologicalMaterial06), col="red")
+```
+
+

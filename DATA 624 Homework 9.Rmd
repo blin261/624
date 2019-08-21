@@ -1,0 +1,218 @@
+---
+title: "DATA 624 Homework 9"
+author: "Bin Lin"
+date: "2018-5-11"
+output: html_document
+---
+
+8.4. Use a single predictor in the solubility data, such as the molecular weight or the number of carbon atoms and fit several models:
+
+(a) A simple regression tree
+```{r}
+library(caret)
+library(AppliedPredictiveModeling)
+data("solubility")
+
+sol_Train_X <- subset(solTrainXtrans, select = "NumCarbon")
+sol_Train_Y <- solTrainY
+
+sol_Test_X <- subset(solTestX, select = "NumCarbon")
+sol_Test_Y <- solTestY
+```
+
+
+
+```{r}
+set.seed(888)
+rpartTune  <- train(sol_Train_X, sol_Train_Y, method = "rpart2")
+rpartTune
+```
+
+
+
+(b) A random forest model
+
+```{r}
+set.seed(888)
+rfTune  <- train(sol_Train_X, sol_Train_Y, method = "rf", tuneLength = 1)
+rfTune
+```
+
+
+
+(c) Different Cubist models with a single rule or multiple committees (each with and without using neighbor adjustments)
+
+RMSE was used to select the optimal model using the smallest value. The final values used for the model were committees = 1 and neighbors = 0.
+```{r}
+set.seed(888)
+grid <- expand.grid(committees = c(1, 10, 50, 100), neighbors = c(0, 1, 5, 9))
+
+cubistTune <- train(sol_Train_X, sol_Train_Y, method = "cubist",  tuneGrid = grid)
+cubistTune
+```
+
+
+
+Plot the predictor data versus the solubility results for the test set. Overlay the model predictions for the test set. How do the model differ? Does changing the tuning parameter(s) significantly affect the model fit?
+
+```{r}
+library(ggplot2)
+
+rpartPred <- predict(rpartTune, newdata = sol_Test_X)
+rfPred <- predict(rfTune, newdata = sol_Test_X)
+cubistPred <- predict(cubistTune, newdata = sol_Test_X)
+
+test <- cbind(sol_Test_X, sol_Test_Y, simple_regression = rpartPred, random_forest = rfPred, cubist = cubistPred)
+
+ggplot(data = test, aes(x = sol_Test_X, y = sol_Test_Y)) + 
+  geom_point() + 
+  xlim(0, 7) +
+  geom_line(aes(y = rpartPred), color = "red") +
+  geom_line(aes(y = rfPred), color = "blue") +
+  geom_line(aes(y = cubistPred), color = "green")
+```
+
+
+8.5. Fit different tree- and rule-based models for the Tecator data discussed in Exercise 6.1. How do they compare to linear models? Do the between predictor correlations seem to affect your models? If so, how would you transform or re-encode the predictor data to mitigate this issue?
+
+```{r}
+library(caret)
+data(tecator)
+set.seed(888)
+
+endpoints1 <- as.data.frame(endpoints)
+absorp1 <- as.data.frame(absorp)
+
+
+trainingRows <- createDataPartition(endpoints1[, 2], p = 0.8, list= FALSE)
+endpoints_train <- endpoints1[trainingRows, 2]
+endpoints_test <- endpoints1[-trainingRows, 2]
+
+absorp_train <- absorp1[trainingRows, ]
+absorp_test <- absorp1[-trainingRows, ]
+```
+
+```{r}
+set.seed(888)
+
+ctrl <- trainControl(method = "cv", preProc = c("center", "scale"))
+
+plsTune2  <- train(x = absorp_train, y = endpoints_train, method = "pls", trControl = ctrl)
+rpartTune2  <- train(x = absorp_train, y = endpoints_train, method = "rpart2", trControl = ctrl)
+rfTune2  <- train(x = absorp_train, y = endpoints_train, method = "rf", trControl = ctrl)
+
+gbmGrid <- expand.grid(interaction.depth = seq(1, 7, by = 2), n.trees = seq(100, 1000, by = 50), shrinkage = c(0.01, 0.1), n.minobsinnode = 10)
+gbmTune2 <- train(x = absorp_train, y = endpoints_train, method = "gbm", tuneGrid = gbmGrid, verbose = FALSE)
+
+cubistTune2 <- train(x = absorp_train, y = endpoints_train, method = "cubist")
+```
+
+```{r}
+pls_RMSE2 <- min(plsTune2$results$RMSE)
+rpart_RMSE2 <- min(rpartTune2$results$RMSE)
+rf_RMSE2 <- min(rfTune2$results$RMSE)
+gbm_RMSE2 <- min(gbmTune2$results$RMSE)
+cubist_RMSE2 <- min(cubistTune2$results$RMSE)
+
+result2 <- data.frame(Model = c("pls", "rpart", "rf", "gbm", "cubist"), RMSE = c(pls_RMSE2, rpart_RMSE2, rf_RMSE2, gbm_RMSE2, cubist_RMSE2))
+
+result2
+```
+
+Interpretation: Based on RMSE that is generated from each model, we can tell that the Cubist model has the best performance. Among all the models, ramdon forest model is one of the worst along with single regression trees model. From some previous exercise, we know the predictor correlation will affect the models. The predictors that are highly correlated to each other will receive same level of importance, while decreasing other predictors' importance down. Therefore, the best practice is to eliminate highly correlated predictors. 
+
+
+
+
+
+8.6. Return to the permeability problem described in Exercises 6.2 and 7.4. Train several tree-based models and evaluate the resampling and test set performance:
+
+(a) Which tree-based model gives the optimal resampling and test set performance?
+
+
+Ramdon forest model provides the optimal resampling and test set performance, because it has the lowest RMSE value.
+
+
+```{r}
+data(permeability)
+set.seed(888)
+
+fingerprints1 <- as.data.frame(fingerprints)
+permeability1 <- as.data.frame(permeability)
+
+fingerprints1 <- fingerprints1[, -nearZeroVar(fingerprints1)]
+
+trainingRows <- createDataPartition(permeability1$permeability, p = 0.8, list= FALSE)
+fingerprints_train <- fingerprints1[trainingRows,]
+fingerprints_test <- fingerprints1[-trainingRows,]
+
+permeability_train <- permeability1[trainingRows, ]
+permeability_test <- permeability1[-trainingRows, ]
+```
+
+
+```{r}
+set.seed(888)
+
+ctrl <- trainControl(method = "cv", preProc = c("center", "scale"))
+
+plsTune3  <- train(x = fingerprints_train, y = permeability_train, method = "pls", trControl = ctrl)
+rpartTune3  <- train(x = fingerprints_train, y = permeability_train, method = "rpart2", trControl = ctrl)
+rfTune3  <- train(x = fingerprints_train, y = permeability_train, method = "rf", trControl = ctrl)
+
+gbmGrid <- expand.grid(interaction.depth = seq(1, 7, by = 2), n.trees = seq(100, 1000, by = 50), shrinkage = c(0.01, 0.1), n.minobsinnode = 10)
+gbmTune3 <- train(x = fingerprints_train, y = permeability_train, method = "gbm", tuneGrid = gbmGrid, verbose = FALSE)
+
+cubistTune3 <- train(x = fingerprints_train, y = permeability_train, method = "cubist")
+```
+
+```{r}
+pls_RMSE3 <- min(plsTune3$results$RMSE)
+rpart_RMSE3 <- min(rpartTune3$results$RMSE)
+rf_RMSE3 <- min(rfTune3$results$RMSE)
+gbm_RMSE3 <- min(gbmTune3$results$RMSE)
+cubist_RMSE3 <- min(cubistTune3$results$RMSE)
+
+result3 <- data.frame(Model = c("pls", "rpart", "rf", "gbm", "cubist"), RMSE = c(pls_RMSE3, rpart_RMSE3, rf_RMSE3, gbm_RMSE3, cubist_RMSE3))
+
+result3
+```
+
+
+(b) Do any of these models outperform the covariance or non-covariance based regression models you have previously developed for these data? What criteria did you use to compare models' performance?
+
+
+None of these models outperform the covariance or non-covariance based regression models than SVM radial model. I am using RMSE to compare modesl' performance.
+
+```{r}
+set.seed(888)
+ctrl <- trainControl(method = "cv", preProc = c("center", "scale", "knnImpute"))
+
+knnTune3 <- train(x = fingerprints_train, y = permeability_train, method = "knn", tuneLength = 10)
+
+marsGrid <- expand.grid(degree = 1:2, nprune = 1:20)
+marsTune3 <- train(x = fingerprints_train, y = permeability_train, method = "earth", tuneGrid = marsGrid, trControl = ctrl)
+
+svmRTune3 <- train(x = fingerprints_train, y = permeability_train, method = "svmRadial", tuneLength = 20, trControl = ctrl)
+
+```
+
+
+
+```{r}
+knn_RMSE3 <- min(knnTune3$results$RMSE)
+mars_RMSE3 <- min(marsTune3$results$RMSE)
+svmR_RMSE3 <- min(svmRTune3$results$RMSE)
+
+result4 <- data.frame(Model = c("knn", "mars", "svmR"), RMSE = c(knn_RMSE3, mars_RMSE3, svmR_RMSE3))
+
+result4
+```
+
+
+
+
+(c) Of all the models you have developed thus far, which, if any, would you recommend to replace the permeability laboratory experiment?
+
+I would recommend SVM model with svmRadial method, because it generate lowest RMSEvalue.
+

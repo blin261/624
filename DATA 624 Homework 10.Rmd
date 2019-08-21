@@ -1,0 +1,53 @@
+---
+title: "DATA 624 Homework10"
+author: "Bin Lin"
+date: "2018-5-17"
+output: html_document
+---
+
+
+Imagine 10000 receipts sitting on your table. Each receipt represents a transaction with items that were purchased. The receipt is a representation of stuff that went into a customer's basket - and therefore 'Market Basket Analysis'. That is exactly what the Groceries Data Set contains: a collection of receipts with each line representing 1 receipt and the items purchased. Each line is called a transaction and each column in a row represents an item. Here is the dataset = GroceryDataSet.csv (comma separated file)
+
+You assignment is to use R to mine the data for association rules.  You should report support, confidence and lift and your top 10 rules by lift. 
+
+
+
+
+For this assignment, I will need the R package called arules. This package can be used forn mining association ruls and frequent itemsets. From the following summary statistics, we know this dataset contains 9835 transactions and 169 items.
+
+
+```{r}
+#install.packages("arules")
+library(arules)
+raw_data <- read.transactions("https://raw.githubusercontent.com/blin261/624/master/GroceryDataSet.csv", format = "basket", sep = ",")
+
+summary(raw_data)
+```
+
+First of all, I would like to investigate the frequencies of each item and filter out the top 10 items using itemFrequencyPlot method.
+
+
+```{r}
+itemFrequencyPlot(raw_data, topN = 10)
+```
+
+Association Rules: Support is an indication of how frequently the itemset appears in the dataset. Confidence is an indication of how often the rule has been found to be true. Lift is the ratio of the observed support to that expected
+
+
+The following result shows the summary statistics of the apriori algorithms. There are total 410 rules with the length distributed from 3 to 6. The distribution for support, confidence, and lift are also shown as follows.
+
+```{r}
+rules <- apriori(raw_data, parameter = list(supp = 0.001, confidence = 0.8, minlen = 2), control = list(verbose = FALSE))
+summary(rules)
+```
+
+The following code will order all the rules by descending order based on lift. Then pick up the top 10 
+rules and investigate further. 
+
+
+```{r}
+inspect(head(rules, 10, by = "lift"))
+```
+
+Interpretation: The rule with the highest lift is for a purchase of bottled beer after purchase of liquor,red/blush wine. The rule has the lift value at 11.235. This pattern appears 19 times in the datasets.
+
